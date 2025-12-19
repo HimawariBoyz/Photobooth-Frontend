@@ -3,72 +3,28 @@ import axios from 'axios'
 import { useNavigate, useLocation } from 'react-router-dom'
 import '../styles/PhotoboothPage.css'
 
-// --- 9 POPULAR FILTER PRESETS (สูตรแต่งภาพยอดฮิต) ---
+// --- FILTER PRESETS ---
 const FILTER_PRESETS = {
-  normal: {
-    id: 'normal',
-    name: 'Original',
-    filter: 'none',
-    overlay: false
-  },
-  bright: {
-    id: 'bright',
-    name: 'Bright ☀️', // สไตล์เกาหลี ยอดนิยม
-    filter: 'brightness(1.2) contrast(1.05) saturate(1.05)',
-    overlay: false
-  },
-  peach: {
-    id: 'peach',
-    name: 'Peach 🍑', // ผิวอมชมพู
-    filter: 'brightness(1.15) contrast(1.0) saturate(1.1) hue-rotate(-10deg) sepia(0.1)',
-    overlay: false
-  },
-  warm: {
-    id: 'warm',
-    name: 'Warm ☕', // โทนอุ่น คาเฟ่
-    filter: 'brightness(1.1) sepia(0.25) contrast(1.0) saturate(1.1)',
-    overlay: false
-  },
-  cool: {
-    id: 'cool',
-    name: 'Cool ❄️', // ผิวไบรท์ โทนเย็น
-    filter: 'brightness(1.1) contrast(1.05) saturate(0.9) hue-rotate(10deg)',
-    overlay: false
-  },
-  vintage: {
-    id: 'vintage',
-    name: 'Vintage 🎞️', // ฟิล์มตุ่นๆ
-    filter: 'sepia(0.4) contrast(1.1) brightness(0.95) saturate(0.85)',
-    overlay: false
-  },
-  dreamy: {
-    id: 'dreamy',
-    name: 'Dreamy ✨', // ฟุ้งๆ เบลอๆ เหมือนฝัน
-    filter: 'brightness(1.1) contrast(0.95) saturate(1.1)',
-    overlay: true,
-    overlayMode: 'screen',
-    overlayAlpha: 0.4,
-    overlayBlur: 'blur(8px)'
-  },
-  vivid: {
-    id: 'vivid',
-    name: 'Vivid 🌈', // สีสด จัดจ้าน
-    filter: 'brightness(1.05) contrast(1.15) saturate(1.4)',
-    overlay: false
-  },
-  fade: {
-    id: 'fade',
-    name: 'Fade 🌫️', // แมทๆ ฮิปสเตอร์
-    filter: 'brightness(1.1) contrast(0.85) saturate(0.9)',
-    overlay: false
-  }
+  normal: { id: 'normal', name: 'Original', filter: 'none', overlay: false },
+  bright: { id: 'bright', name: 'Bright ☀️', filter: 'brightness(1.2) contrast(1.05) saturate(1.05)', overlay: false },
+  peach: { id: 'peach', name: 'Peach 🍑', filter: 'brightness(1.15) contrast(1.0) saturate(1.1) hue-rotate(-10deg) sepia(0.1)', overlay: false },
+  warm: { id: 'warm', name: 'Warm ☕', filter: 'brightness(1.1) sepia(0.25) contrast(1.0) saturate(1.1)', overlay: false },
+  cool: { id: 'cool', name: 'Cool ❄️', filter: 'brightness(1.1) contrast(1.05) saturate(0.9) hue-rotate(10deg)', overlay: false },
+  vintage: { id: 'vintage', name: 'Vintage 🎞️', filter: 'sepia(0.4) contrast(1.1) brightness(0.95) saturate(0.85)', overlay: false },
+  dreamy: { id: 'dreamy', name: 'Dreamy ✨', filter: 'brightness(1.1) contrast(0.95) saturate(1.1)', overlay: true, overlayMode: 'screen', overlayAlpha: 0.4, overlayBlur: 'blur(8px)' },
+  vivid: { id: 'vivid', name: 'Vivid 🌈', filter: 'brightness(1.05) contrast(1.15) saturate(1.4)', overlay: false },
+  fade: { id: 'fade', name: 'Fade 🌫️', filter: 'brightness(1.1) contrast(0.85) saturate(0.9)', overlay: false }
 }
 
 function PhotoboothPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  
+  // --- Config & State ---
+  const API_URL = 'http://localhost:8000'
+  const TICK_RATE = 1500
+  const selectedFrame = location.state?.selectedFrame
 
-  // --- State ---
   const [finalPhoto, setFinalPhoto] = useState(null)
   const [finalFilename, setFinalFilename] = useState(null)
   const [countdown, setCountdown] = useState(null)
@@ -77,13 +33,9 @@ function PhotoboothPage() {
   const [isPrinting, setIsPrinting] = useState(false)
   const [shotImgs, setShotImgs] = useState([])
   const [frameSlots, setFrameSlots] = useState([])
-
-  // State Flash & Filter
   const [triggerFlash, setTriggerFlash] = useState(false)
-  const [activeFilter, setActiveFilter] = useState('bright') // เริ่มต้นที่ Bright
-
-  const API_URL = 'http://localhost:8000'
-  const selectedFrame = location.state?.selectedFrame
+  const [activeFilter, setActiveFilter] = useState('bright')
+  const [isFrameLoaded, setIsFrameLoaded] = useState(false)
 
   // --- Refs ---
   const videoRef = useRef(null)
@@ -92,14 +44,16 @@ function PhotoboothPage() {
   const frameImgRef = useRef(null)
   const rafRef = useRef(null)
 
-  // --- Configuration ---
-  const TICK_RATE = 1500
+  // 1. Check Access
+  useEffect(() => {
+    if (!selectedFrame) navigate('/') 
+  }, [selectedFrame, navigate])
 
   const frameUrl = selectedFrame
     ? (selectedFrame.includes('http') ? selectedFrame : `${API_URL}/frames/${selectedFrame}`)
     : null
 
-  // 1. Load Slots
+  // 2. Load Frame Data
   useEffect(() => {
     if (!selectedFrame) return
     axios.get(`${API_URL}/frame-props/${selectedFrame}`)
@@ -109,12 +63,12 @@ function PhotoboothPage() {
       .catch(err => console.error(err))
   }, [selectedFrame])
 
-  // 2. Init Camera
+  // 3. Init Camera
   useEffect(() => {
     const initCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720, facingMode: "user" },
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: "user" },
           audio: false
         })
         if (videoRef.current) {
@@ -122,7 +76,7 @@ function PhotoboothPage() {
           videoRef.current.play().catch(e => console.error(e))
         }
       } catch (err) {
-        alert("Camera Error: " + err.message)
+        console.error("Camera Error:", err)
       }
     }
     initCamera()
@@ -134,61 +88,93 @@ function PhotoboothPage() {
     }
   }, [])
 
-  // 3. Preload Frame
+  // 4. Preload Frame Image
   useEffect(() => {
     if (!frameUrl) return
+    setIsFrameLoaded(false)
     const img = new Image()
     img.crossOrigin = "anonymous"
-    img.onload = () => { frameImgRef.current = img }
+    img.onload = () => { 
+        frameImgRef.current = img 
+        setIsFrameLoaded(true)
+    }
     img.src = frameUrl
   }, [frameUrl])
 
-  // 4. Render Loop (แสดงผลหน้าจอ)
+  // --- 🔥 CORE LOGIC: SCALE TO COVER (ตัดขอบดำทิ้ง) ---
+  // ฟังก์ชันนี้ใช้สำหรับวาดภาพลง Canvas (ทั้ง Live View และตอน Snap)
+  const drawCover = (ctx, img, cw, ch, preset, isMirror = true) => {
+    const vw = img.videoWidth || img.width
+    const vh = img.videoHeight || img.height
+    
+    // 1. คำนวณ Scale ที่มากที่สุด เพื่อให้ภาพขยายจนเต็มพื้นที่ (ส่วนเกินจะล้นออกไป)
+    const scale = Math.max(cw / vw, ch / vh)
+    
+    // 2. คำนวณขนาดภาพใหม่
+    const dw = vw * scale
+    const dh = vh * scale
+    
+    // 3. ย้ายจุดวาดไปที่กึ่งกลางจอ
+    ctx.translate(cw / 2, ch / 2)
+    
+    // 4. กลับด้าน (Mirror) ถ้าต้องการ
+    if (isMirror) ctx.scale(-1, 1)
+    
+    // 5. Apply Filter
+    if (preset) ctx.filter = preset.filter
+    
+    // 6. วาดภาพโดยให้จุดกึ่งกลางภาพอยู่ที่ (0,0)
+    ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
+    
+    // 7. Overlay Filter (ถ้ามี)
+    if (preset && preset.overlay) {
+      ctx.globalCompositeOperation = preset.overlayMode || 'screen'
+      ctx.globalAlpha = preset.overlayAlpha
+      ctx.filter = preset.overlayBlur
+      ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
+      ctx.globalCompositeOperation = 'source-over'
+      ctx.globalAlpha = 1.0
+    }
+    
+    // Reset Transformations
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.filter = 'none'
+  }
+
+  // 5. Render Loop (Live View)
   const renderLoop = () => {
     if (mainCanvasRef.current && videoRef.current && videoRef.current.readyState >= 2) {
       const cvs = mainCanvasRef.current
       const ctx = cvs.getContext('2d')
       const vid = videoRef.current
-      const preset = FILTER_PRESETS[activeFilter]
-
-      cvs.width = cvs.clientWidth
-      cvs.height = cvs.clientHeight
-
-      ctx.save()
-      ctx.translate(cvs.width, 0)
-      ctx.scale(-1, 1)
-
-      // Apply Filter
-      ctx.filter = preset.filter
-      ctx.drawImage(vid, 0, 0, cvs.width, cvs.height)
-
-      // Apply Overlay (ถ้ามี)
-      if (preset.overlay) {
-        ctx.globalCompositeOperation = preset.overlayMode || 'screen'
-        ctx.globalAlpha = preset.overlayAlpha
-        ctx.filter = preset.overlayBlur
-        ctx.drawImage(vid, 0, 0, cvs.width, cvs.height)
-
-        ctx.globalCompositeOperation = 'source-over'
-        ctx.globalAlpha = 1.0
+      
+      // Sync Canvas size with Display size
+      if (cvs.width !== cvs.clientWidth || cvs.height !== cvs.clientHeight) {
+         cvs.width = cvs.clientWidth
+         cvs.height = cvs.clientHeight
       }
 
-      ctx.filter = 'none'
-      ctx.restore()
+      // วาดภาพเต็มจอ (ใช้ฟังก์ชัน drawCover)
+      drawCover(ctx, vid, cvs.width, cvs.height, FILTER_PRESETS[activeFilter], true)
     }
 
-    // ส่วน Preview ด้านขวา
+    // ส่วน Preview (แสดงผลรูปที่ถ่ายไปแล้ว)
     if (composeCanvasRef.current) {
       const cvs = composeCanvasRef.current
       const ctx = cvs.getContext('2d')
-      cvs.width = cvs.clientWidth
-      cvs.height = cvs.clientHeight
+      // Sync size
+      if (cvs.width !== cvs.clientWidth || cvs.height !== cvs.clientHeight) {
+        cvs.width = cvs.clientWidth
+        cvs.height = cvs.clientHeight
+      }
+
       const w = cvs.width
       const h = cvs.height
 
       ctx.fillStyle = '#f0f0f0'
       ctx.fillRect(0, 0, w, h)
 
+      // วาดรูปที่ถ่ายแล้วลงตาม Slot
       shotImgs.forEach((img, idx) => {
         const slotIndex = idx % frameSlots.length
         const s = frameSlots[slotIndex]
@@ -197,7 +183,8 @@ function PhotoboothPage() {
         }
       })
 
-      if (frameImgRef.current) {
+      // วาดเฟรมทับ
+      if (frameImgRef.current && isFrameLoaded) {
         ctx.drawImage(frameImgRef.current, 0, 0, w, h)
       }
     }
@@ -207,9 +194,9 @@ function PhotoboothPage() {
   useEffect(() => {
     rafRef.current = requestAnimationFrame(renderLoop)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [shotImgs, frameSlots, activeFilter])
+  }, [shotImgs, frameSlots, activeFilter, isFrameLoaded])
 
-  // 5. Shooting Logic
+  // 6. Shooting Process
   const startSession = () => {
     setShotImgs([])
     setCurrentShot(1)
@@ -230,43 +217,26 @@ function PhotoboothPage() {
     }, TICK_RATE)
   }
 
-  // ฟังก์ชันถ่ายภาพ (High Resolution + Filter)
   const performSnap = (step) => {
     setTriggerFlash(true)
     setTimeout(() => setTriggerFlash(false), 200)
 
     if (!videoRef.current) return
-
     const vid = videoRef.current
-    const preset = FILTER_PRESETS[activeFilter]
 
-    // สร้าง Temp Canvas ขนาดเท่า Video จริง (HD/Full HD) เพื่อความชัด
+    // สร้าง Canvas ชั่วคราวเพื่อ Capture
     const tempCvs = document.createElement('canvas')
-    tempCvs.width = vid.videoWidth
-    tempCvs.height = vid.videoHeight
+    tempCvs.width = 1920
+    tempCvs.height = 1080 // บังคับ 16:9
     const ctx = tempCvs.getContext('2d')
 
-    ctx.translate(tempCvs.width, 0)
-    ctx.scale(-1, 1)
+    // ใช้ logic เดียวกับ Live View เพื่อให้ภาพที่ได้เหมือนตาเห็นเป๊ะ
+    drawCover(ctx, vid, tempCvs.width, tempCvs.height, FILTER_PRESETS[activeFilter], true)
 
-    // 1. วาดภาพหลัก + Filter
-    ctx.filter = preset.filter
-    ctx.drawImage(vid, 0, 0)
-
-    // 2. วาด Overlay (ถ้ามี)
-    if (preset.overlay) {
-      ctx.globalCompositeOperation = preset.overlayMode || 'screen'
-      ctx.globalAlpha = preset.overlayAlpha
-      ctx.filter = preset.overlayBlur
-      ctx.drawImage(vid, 0, 0)
-
-      // Reset
-      ctx.globalCompositeOperation = 'source-over'
-      ctx.globalAlpha = 1.0
-    }
-
-    // Save
     tempCvs.toBlob(async (blob) => {
+      if (!blob) return
+
+      // โชว์ Preview ทันที
       const url = URL.createObjectURL(blob)
       const img = new Image()
       img.onload = () => {
@@ -278,12 +248,15 @@ function PhotoboothPage() {
       }
       img.src = url
 
+      // อัปโหลดไป Server
       const formData = new FormData()
       formData.append('step', step)
       formData.append('file', blob, `shot_${step}.jpg`)
-      try { await axios.post(`${API_URL}/capture_step`, formData) }
-      catch (e) { console.error(e) }
+      
+      try { await axios.post(`${API_URL}/capture_step`, formData) } 
+      catch (e) { console.error("Upload Failed:", e) }
 
+      // ไปช็อตต่อไป หรือ จบ
       setTimeout(() => {
         if (step < (frameSlots.length || 4)) {
           setCurrentShot(step + 1)
@@ -292,11 +265,11 @@ function PhotoboothPage() {
           finishSession()
         }
       }, 2000)
-
     }, 'image/jpeg', 0.95)
   }
 
   const finishSession = async () => {
+    if (!selectedFrame) return
     setIsProcessing(true)
     try {
       const res = await axios.post(`${API_URL}/merge?frame_id=${selectedFrame}`)
@@ -312,25 +285,19 @@ function PhotoboothPage() {
     }
   }
 
+  // ... (Print, Back, Reset, Home Logic เหมือนเดิม) ...
   const handlePrint = async () => {
     if (!finalFilename) return
     setIsPrinting(true)
     try {
       const res = await axios.post(`${API_URL}/print/${finalFilename}`)
-      if (res.data.status === 'success') {
-        alert("กำลังส่งคำสั่งไปที่เครื่องปริ้น... 🖨️")
-      } else {
-        alert("ไม่สามารถสั่งปริ้นได้: " + res.data.message)
-      }
-    } catch (e) {
-      alert("Print Error")
-    } finally {
-      setIsPrinting(false)
-    }
+      alert(res.data.status === 'success' ? "กำลังส่งคำสั่งไปที่เครื่องปริ้น... 🖨️" : "Print Error")
+    } catch (e) { alert("Print Error") } 
+    finally { setIsPrinting(false) }
   }
 
   const handleBack = async () => {
-    try { await axios.delete(`${API_URL}/cleanup`) } catch (e) { }
+    try { await axios.delete(`${API_URL}/cleanup`) } catch (e) {}
     navigate('/select-frame')
   }
 
@@ -357,6 +324,7 @@ function PhotoboothPage() {
 
       <div className={`flash-overlay ${triggerFlash ? 'active' : ''}`}></div>
       <video ref={videoRef} className="hidden-video" playsInline muted autoPlay />
+      
       {countdown && <div className="overlay-text countdown">{countdown}</div>}
       {isProcessing && <div className="overlay-text message processing">✓ กำลังประมวลผล...</div>}
       {isPrinting && <div className="overlay-text message printing">🖨️ ส่งคำสั่งไปปริ้น...</div>}
@@ -376,25 +344,28 @@ function PhotoboothPage() {
             <div className="cam-box">
               <canvas ref={mainCanvasRef} className="cam-canvas" />
               <div className="badge badge-live">LIVE CAMERA</div>
-
-              {/* --- Filter Bar UI --- */}
+              
+              {/* Bubble Filter Bar */}
               {currentShot === 0 && (
-                <div className="filter-bar">
-                  {Object.values(FILTER_PRESETS).map((preset) => (
-                    <button
-                      key={preset.id}
-                      onClick={() => setActiveFilter(preset.id)}
-                      className={`filter-btn ${activeFilter === preset.id ? 'active' : ''}`}
-                    >
-                      {preset.name}
-                    </button>
-                  ))}
+                <div className="filter-scroll-container">
+                  <div className="filter-bar">
+                    {Object.values(FILTER_PRESETS).map((preset) => (
+                      <button
+                        key={preset.id}
+                        onClick={() => setActiveFilter(preset.id)}
+                        className={`filter-item ${activeFilter === preset.id ? 'active' : ''}`}
+                      >
+                        <div className={`filter-bubble bubble-${preset.id}`}></div>
+                        <span className="filter-name">{preset.name}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
-
+            
             {currentShot === 0 ? (
-              <button onClick={startSession} className="btn btn-primary btn-lg" style={{ marginTop: '20px' }}>
+              <button onClick={startSession} className="btn btn-primary btn-lg" style={{marginTop: '20px'}}>
                 📸 เริ่มถ่าย
               </button>
             ) : (
