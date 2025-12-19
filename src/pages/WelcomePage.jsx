@@ -2,13 +2,13 @@ import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { gsap } from 'gsap';
 import '../styles/WelcomePage.css';
-import bgImage from '../assets/background/Photobooth.png';
+import bgImage from '../assets/background/Photobooth2.png';
 
 function WelcomePage() {
   const navigate = useNavigate();
   const comp = useRef(null);
 
-  // Snowflakes logic
+  // สร้างหิมะ 50 ก้อน
   const snowflakes = React.useMemo(() => [...Array(50)].map((_, i) => ({
     id: i,
     left: Math.random() * 100 + '%',
@@ -19,10 +19,15 @@ function WelcomePage() {
 
   useEffect(() => {
     let ctx = gsap.context(() => {
-      // Simple Entrance Animation
-      gsap.from(".home__bg", { opacity: 0, scale: 1.1, duration: 2, ease: "power2.out" });
-      gsap.from(".home__title", { y: -50, opacity: 0, duration: 1.5, delay: 0.5, ease: "power3.out" });
-      gsap.from(".btn-start-wrapper", { y: 50, opacity: 0, duration: 1, delay: 1, ease: "back.out(1.5)" });
+      gsap.from(".home__bg", { scale: 1.2, duration: 2.5, ease: "power2.out" });
+
+      const tl = gsap.timeline();
+      tl.from(".home__kicker", { y: -20, opacity: 0, duration: 0.8, ease: "back.out" })
+        .from(".home__title-main", { scale: 0.5, opacity: 0, duration: 1, ease: "elastic.out(1, 0.5)" }, "-=0.4")
+        .from(".home__subtitle", { y: 20, opacity: 0, duration: 0.8 }, "-=0.6")
+        .from(".btn-start-wrapper", { y: 30, opacity: 0, duration: 0.8, ease: "back.out(1.7)" }, "-=0.4")
+        .from(".footer-text", { opacity: 0, duration: 1, delay: 0.5 });
+
     }, comp);
 
     return () => ctx.revert();
@@ -46,36 +51,22 @@ function WelcomePage() {
       </div>
 
       <div className="home__container">
-        {/* Restoring UI per user request implied by 'Welcome Page' functionality */}
+        {/* UI Layer ตรงกลาง */}
         <div className="ui-layer">
-          <div className="btn-start-wrapper" style={{ marginTop: 'auto', marginBottom: '10%' }}>
-            {/* Implicitly centralized button at bottom given no title present in user manual edit, 
-                   but usually a welcome page needs a button. 
-                   I will keep the UI structure I proposed in the verified step but acknowledge the user cleared it. 
-                   However, to "Make it snow", I need a container. 
-                   If the user DELETED the UI, I should probably put it back or else the page is broken (no start button). 
-                   I will restore the UI layer as it was in the previous step, assuming the deletion was part of the "reset" request or accidental. */}
+          <div className="home__header-group">
+            <div className="home__kicker">PHOTOBOOTH</div>
+            <h1 className="home__title-main">CHRISTMAS</h1>
+            <div className="home__subtitle">@SATTHASAMUT</div>
+          </div>
 
-            {/* Actually, user said "Change it immediately" -> I see the diff where they deleted the UI. 
-                   Maybe they just want the background and snow? 
-                   But how do they start? 
-                   I will add the START button back because it is a "Welcome Page". 
-                   I'll make the title optional/removed if they disliked it, but I'll restore the full UI for safety as it looks better. */}
-
-            <h1 className="home__title">
-              PHOTOBOOTH <br />
-              <span className="text-christmas">CHRISTMAS</span> <br />
-              <span className="text-location">@SATTHASAMUT</span>
-            </h1>
-
-            <div className="btn-start-wrapper">
-              <button className="btn-start" onClick={() => navigate('/select-frame')}>
-                START 📸
-              </button>
-              <div className="footer-text">Created by Sudlor</div>
-            </div>
+          <div className="btn-start-wrapper">
+            <button className="btn-start" onClick={() => navigate('/select-frame')}>
+              START 📸
+            </button>
           </div>
         </div>
+
+        <div className="footer-text">Created by Himawariboyz</div>
       </div>
     </div>
   );

@@ -11,8 +11,9 @@ body {
   margin: 0;
   padding: 0;
   width: 100vw;
-  height: 100vh;
-  /* ใช้ hidden เพื่อกัน Scroll ของหน้าเว็บหลัก (เหมือนแอป) */
+  /* ใช้ min-height: 100dvh เพื่อแก้ปัญหา Address Bar ในมือถือ */
+  min-height: 100vh;
+  min-height: 100dvh;
   overflow: hidden;
   background-color: var(--xmas-green);
   font-family: 'Fredoka', sans-serif;
@@ -30,37 +31,29 @@ body {
 
 .container {
   background: white;
-  /* เปลี่ยน padding เป็นหน่วยผสม เพื่อให้ยืดหยุ่น */
   padding: clamp(15px, 2vh, 30px);
   border-radius: 20px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   text-align: center;
   border: 8px solid var(--xmas-red);
   position: relative;
-
-  /* Responsive Width */
   width: 90%;
   max-width: 800px;
-  /* จอคอมจะไม่กว้างเกินนี้ */
 
-  /* Responsive Height */
+  /* ปรับความสูงให้ยืดหยุ่นและไม่ล้นจอ */
   height: auto;
-  max-height: 95vh;
-  /* สูงไม่เกิน 95% ของจอ */
+  max-height: 90vh;
+  /* ลดลงเล็กน้อยเผื่อพื้นที่ขอบ */
 
-  /* Flex Layout */
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
 
-  /* เพิ่ม: ถ้าจอมือถือเตี้ยมาก ให้ Scroll ในกล่องขาวได้ เนื้อหาไม่หาย */
   overflow-y: auto;
-  /* ซ่อน Scrollbar ให้สวยงาม (สำหรับ Chrome/Safari) */
   scrollbar-width: none;
 }
 
-/* ซ่อน Scrollbar (Webkit) */
 .container::-webkit-scrollbar {
   display: none;
 }
@@ -69,19 +62,17 @@ body {
   content: '❄️ 🎄 MERRY CHRISTMAS 🎄 ❄️';
   display: block;
   color: var(--xmas-red);
-  /* ปรับขนาดตัวอักษรหัวข้อให้ยืดหยุ่น */
-  font-size: clamp(1.2rem, 4vw, 2.5rem);
+  font-size: clamp(1rem, 4vw, 2.5rem);
+  /* ปรับ min size ลงเพื่อกันแตกในจอมือถือเล็ก */
   font-weight: bold;
   margin-bottom: 1.5vh;
   letter-spacing: 2px;
-  /* กันข้อความแตกบรรทัดในมือถือ */
   white-space: nowrap;
 }
 
 .btn {
-  /* ปรับขนาดปุ่ม */
   padding: 12px 24px;
-  font-size: clamp(1rem, 2vh, 1.25rem);
+  font-size: clamp(0.9rem, 2vh, 1.25rem);
   border: none;
   border-radius: 50px;
   cursor: pointer;
@@ -99,7 +90,6 @@ body {
   top: 10px;
   left: 10px;
   background: rgba(255, 255, 255, 0.8);
-  /* เพิ่มพื้นหลังจางๆ กันจม */
   border-radius: 50%;
   width: 35px;
   height: 35px;
@@ -120,29 +110,25 @@ body {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-/* --- Media Query สำหรับมือถือ (หน้าจอเล็กกว่า 768px) --- */
+/* --- Media Query สำหรับมือถือ --- */
 @media screen and (max-width: 768px) {
   .container {
-    width: 95%;
-    /* ขยายกล่องให้กว้างขึ้นในมือถือ */
+    width: 92%;
     border-width: 5px;
-    /* ลดขนาดขอบแดง */
     padding: 15px 10px;
-    /* ลด Padding */
     justify-content: flex-start;
-    /* ให้เริ่มเรียงจากบนลงล่าง (แก้ปัญหากล้องตกขอบ) */
+    /* ให้เริ่มเรียงจากบน */
   }
 
   .container::before {
-    font-size: 1.2rem;
-    /* ลดขนาดหัวข้อ */
+    font-size: 1rem;
     letter-spacing: 1px;
     margin-bottom: 10px;
     white-space: normal;
-    /* ยอมให้ตัดบรรทัดได้ถ้ายาวเกิน */
+    /* ยอมให้ตัดบรรทัด */
+    line-height: 1.4;
   }
 
-  /* ปรับตำแหน่งปุ่ม Back ในมือถือ */
   .btn-back {
     top: 5px;
     left: 5px;
@@ -152,17 +138,18 @@ body {
   }
 }
 
-/* --- Media Query สำหรับแนวนอน (Landscape Height น้อยๆ) --- */
-@media screen and (max-height: 500px) {
+/* --- Media Query สำหรับแนวนอน (Landscape) --- */
+@media screen and (max-height: 600px) {
   .container {
     flex-direction: row;
-    /* จัดเรียงแนวนอนถ้าวางได้ */
     flex-wrap: wrap;
-    padding: 5px;
+    padding: 10px;
+    align-items: center;
+    justify-content: center;
   }
 
   .container::before {
     display: none;
-    /* ซ่อนหัวข้อเพื่อประหยัดพื้นที่ให้กล้อง */
+    /* ซ่อนหัวข้อเพื่อประหยัดพื้นที่ */
   }
 }
