@@ -1,0 +1,168 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap');
+
+:root {
+  --xmas-red: #D42426;
+  --xmas-green: #165B33;
+  --xmas-gold: #F8B229;
+  --snow-white: #F0F2F5;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  /* ใช้ hidden เพื่อกัน Scroll ของหน้าเว็บหลัก (เหมือนแอป) */
+  overflow: hidden;
+  background-color: var(--xmas-green);
+  font-family: 'Fredoka', sans-serif;
+  background-image: radial-gradient(#ffffff 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.container {
+  background: white;
+  /* เปลี่ยน padding เป็นหน่วยผสม เพื่อให้ยืดหยุ่น */
+  padding: clamp(15px, 2vh, 30px);
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  border: 8px solid var(--xmas-red);
+  position: relative;
+
+  /* Responsive Width */
+  width: 90%;
+  max-width: 800px;
+  /* จอคอมจะไม่กว้างเกินนี้ */
+
+  /* Responsive Height */
+  height: auto;
+  max-height: 95vh;
+  /* สูงไม่เกิน 95% ของจอ */
+
+  /* Flex Layout */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  /* เพิ่ม: ถ้าจอมือถือเตี้ยมาก ให้ Scroll ในกล่องขาวได้ เนื้อหาไม่หาย */
+  overflow-y: auto;
+  /* ซ่อน Scrollbar ให้สวยงาม (สำหรับ Chrome/Safari) */
+  scrollbar-width: none;
+}
+
+/* ซ่อน Scrollbar (Webkit) */
+.container::-webkit-scrollbar {
+  display: none;
+}
+
+.container::before {
+  content: '❄️ 🎄 MERRY CHRISTMAS 🎄 ❄️';
+  display: block;
+  color: var(--xmas-red);
+  /* ปรับขนาดตัวอักษรหัวข้อให้ยืดหยุ่น */
+  font-size: clamp(1.2rem, 4vw, 2.5rem);
+  font-weight: bold;
+  margin-bottom: 1.5vh;
+  letter-spacing: 2px;
+  /* กันข้อความแตกบรรทัดในมือถือ */
+  white-space: nowrap;
+}
+
+.btn {
+  /* ปรับขนาดปุ่ม */
+  padding: 12px 24px;
+  font-size: clamp(1rem, 2vh, 1.25rem);
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  font-family: 'Fredoka', sans-serif;
+  transition: transform 0.2s, background-color 0.2s;
+  white-space: nowrap;
+}
+
+.btn:active {
+  transform: scale(0.95);
+}
+
+.btn-back {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  /* เพิ่มพื้นหลังจางๆ กันจม */
+  border-radius: 50%;
+  width: 35px;
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #666;
+  z-index: 20;
+  transition: all 0.2s;
+}
+
+.btn-back:hover {
+  background-color: #fff;
+  color: var(--xmas-red);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* --- Media Query สำหรับมือถือ (หน้าจอเล็กกว่า 768px) --- */
+@media screen and (max-width: 768px) {
+  .container {
+    width: 95%;
+    /* ขยายกล่องให้กว้างขึ้นในมือถือ */
+    border-width: 5px;
+    /* ลดขนาดขอบแดง */
+    padding: 15px 10px;
+    /* ลด Padding */
+    justify-content: flex-start;
+    /* ให้เริ่มเรียงจากบนลงล่าง (แก้ปัญหากล้องตกขอบ) */
+  }
+
+  .container::before {
+    font-size: 1.2rem;
+    /* ลดขนาดหัวข้อ */
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+    white-space: normal;
+    /* ยอมให้ตัดบรรทัดได้ถ้ายาวเกิน */
+  }
+
+  /* ปรับตำแหน่งปุ่ม Back ในมือถือ */
+  .btn-back {
+    top: 5px;
+    left: 5px;
+    width: 30px;
+    height: 30px;
+    font-size: 1rem;
+  }
+}
+
+/* --- Media Query สำหรับแนวนอน (Landscape Height น้อยๆ) --- */
+@media screen and (max-height: 500px) {
+  .container {
+    flex-direction: row;
+    /* จัดเรียงแนวนอนถ้าวางได้ */
+    flex-wrap: wrap;
+    padding: 5px;
+  }
+
+  .container::before {
+    display: none;
+    /* ซ่อนหัวข้อเพื่อประหยัดพื้นที่ให้กล้อง */
+  }
+}
