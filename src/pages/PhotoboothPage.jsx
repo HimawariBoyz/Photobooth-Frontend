@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import useSound from '../hooks/useSound'
 import axios from 'axios'
 import { useNavigate, useLocation } from 'react-router-dom'
 import '../styles/PhotoboothPage.css'
+import { API_URL } from '../config'
 
 // --- FILTER PRESETS ---
 const FILTER_PRESETS = {
@@ -19,9 +21,10 @@ const FILTER_PRESETS = {
 function PhotoboothPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  
+  const { playClick, playSnap, playJingle, playBack } = useSound()
+
   // --- Config & State ---
-  const API_URL = 'http://localhost:8000'
+
   const TICK_RATE = 1500
   const selectedFrame = location.state?.selectedFrame
 
@@ -46,7 +49,7 @@ function PhotoboothPage() {
 
   // 1. Check Access
   useEffect(() => {
-    if (!selectedFrame) navigate('/') 
+    if (!selectedFrame) navigate('/')
   }, [selectedFrame, navigate])
 
   const frameUrl = selectedFrame
@@ -73,7 +76,16 @@ function PhotoboothPage() {
         })
         if (videoRef.current) {
           videoRef.current.srcObject = stream
-          videoRef.current.play().catch(e => console.error(e))
+          // ไม่ต้อง call play() เพราะมี autoPlay attribute แล้ว
+          // รอให้ video พร้อมก่อน render
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current?.play().catch(err => {
+              // Ignore AbortError
+              if (err.name !== 'AbortError') {
+                console.error("Video play error:", err)
+              }
+            })
+          }
         }
       } catch (err) {
         console.error("Camera Error:", err)
@@ -94,9 +106,9 @@ function PhotoboothPage() {
     setIsFrameLoaded(false)
     const img = new Image()
     img.crossOrigin = "anonymous"
-    img.onload = () => { 
-        frameImgRef.current = img 
-        setIsFrameLoaded(true)
+    img.onload = () => {
+      frameImgRef.current = img
+      setIsFrameLoaded(true)
     }
     img.src = frameUrl
   }, [frameUrl])
@@ -106,26 +118,26 @@ function PhotoboothPage() {
   const drawCover = (ctx, img, cw, ch, preset, isMirror = true) => {
     const vw = img.videoWidth || img.width
     const vh = img.videoHeight || img.height
-    
+
     // 1. คำนวณ Scale ที่มากที่สุด เพื่อให้ภาพขยายจนเต็มพื้นที่ (ส่วนเกินจะล้นออกไป)
     const scale = Math.max(cw / vw, ch / vh)
-    
+
     // 2. คำนวณขนาดภาพใหม่
     const dw = vw * scale
     const dh = vh * scale
-    
+
     // 3. ย้ายจุดวาดไปที่กึ่งกลางจอ
     ctx.translate(cw / 2, ch / 2)
-    
+
     // 4. กลับด้าน (Mirror) ถ้าต้องการ
     if (isMirror) ctx.scale(-1, 1)
-    
+
     // 5. Apply Filter
     if (preset) ctx.filter = preset.filter
-    
+
     // 6. วาดภาพโดยให้จุดกึ่งกลางภาพอยู่ที่ (0,0)
     ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
-    
+
     // 7. Overlay Filter (ถ้ามี)
     if (preset && preset.overlay) {
       ctx.globalCompositeOperation = preset.overlayMode || 'screen'
@@ -135,69 +147,70 @@ function PhotoboothPage() {
       ctx.globalCompositeOperation = 'source-over'
       ctx.globalAlpha = 1.0
     }
-    
+
     // Reset Transformations
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.filter = 'none'
   }
 
   // 5. Render Loop (Live View)
-  const renderLoop = () => {
-    if (mainCanvasRef.current && videoRef.current && videoRef.current.readyState >= 2) {
-      const cvs = mainCanvasRef.current
-      const ctx = cvs.getContext('2d')
-      const vid = videoRef.current
-      
-      // Sync Canvas size with Display size
-      if (cvs.width !== cvs.clientWidth || cvs.height !== cvs.clientHeight) {
-         cvs.width = cvs.clientWidth
-         cvs.height = cvs.clientHeight
-      }
-
-      // วาดภาพเต็มจอ (ใช้ฟังก์ชัน drawCover)
-      drawCover(ctx, vid, cvs.width, cvs.height, FILTER_PRESETS[activeFilter], true)
-    }
-
-    // ส่วน Preview (แสดงผลรูปที่ถ่ายไปแล้ว)
-    if (composeCanvasRef.current) {
-      const cvs = composeCanvasRef.current
-      const ctx = cvs.getContext('2d')
-      // Sync size
-      if (cvs.width !== cvs.clientWidth || cvs.height !== cvs.clientHeight) {
-        cvs.width = cvs.clientWidth
-        cvs.height = cvs.clientHeight
-      }
-
-      const w = cvs.width
-      const h = cvs.height
-
-      ctx.fillStyle = '#f0f0f0'
-      ctx.fillRect(0, 0, w, h)
-
-      // วาดรูปที่ถ่ายแล้วลงตาม Slot
-      shotImgs.forEach((img, idx) => {
-        const slotIndex = idx % frameSlots.length
-        const s = frameSlots[slotIndex]
-        if (img && s) {
-          ctx.drawImage(img, s.x * w, s.y * h, s.w * w, s.h * h)
-        }
-      })
-
-      // วาดเฟรมทับ
-      if (frameImgRef.current && isFrameLoaded) {
-        ctx.drawImage(frameImgRef.current, 0, 0, w, h)
-      }
-    }
-    rafRef.current = requestAnimationFrame(renderLoop)
-  }
-
   useEffect(() => {
+    const renderLoop = () => {
+      if (mainCanvasRef.current && videoRef.current && videoRef.current.readyState >= 2) {
+        const cvs = mainCanvasRef.current
+        const ctx = cvs.getContext('2d')
+        const vid = videoRef.current
+
+        // Sync Canvas size with Display size
+        if (cvs.width !== cvs.clientWidth || cvs.height !== cvs.clientHeight) {
+          cvs.width = cvs.clientWidth
+          cvs.height = cvs.clientHeight
+        }
+
+        // วาดภาพเต็มจอ (ใช้ฟังก์ชัน drawCover)
+        drawCover(ctx, vid, cvs.width, cvs.height, FILTER_PRESETS[activeFilter], true)
+      }
+
+      // ส่วน Preview (แสดงผลรูปที่ถ่ายไปแล้ว)
+      if (composeCanvasRef.current) {
+        const cvs = composeCanvasRef.current
+        const ctx = cvs.getContext('2d')
+        // Sync size
+        if (cvs.width !== cvs.clientWidth || cvs.height !== cvs.clientHeight) {
+          cvs.width = cvs.clientWidth
+          cvs.height = cvs.clientHeight
+        }
+
+        const w = cvs.width
+        const h = cvs.height
+
+        ctx.fillStyle = '#f0f0f0'
+        ctx.fillRect(0, 0, w, h)
+
+        // วาดรูปที่ถ่ายแล้วลงตาม Slot
+        shotImgs.forEach((img, idx) => {
+          const slotIndex = idx % frameSlots.length
+          const s = frameSlots[slotIndex]
+          if (img && s) {
+            ctx.drawImage(img, s.x * w, s.y * h, s.w * w, s.h * h)
+          }
+        })
+
+        // วาดเฟรมทับ
+        if (frameImgRef.current && isFrameLoaded) {
+          ctx.drawImage(frameImgRef.current, 0, 0, w, h)
+        }
+      }
+      rafRef.current = requestAnimationFrame(renderLoop)
+    }
+
     rafRef.current = requestAnimationFrame(renderLoop)
     return () => cancelAnimationFrame(rafRef.current)
   }, [shotImgs, frameSlots, activeFilter, isFrameLoaded])
 
   // 6. Shooting Process
   const startSession = () => {
+    playClick()
     setShotImgs([])
     setCurrentShot(1)
     doCountdown(1, 5)
@@ -217,10 +230,61 @@ function PhotoboothPage() {
     }, TICK_RATE)
   }
 
-  const performSnap = (step) => {
+  const performSnap = async (step) => {
+    playSnap()
     setTriggerFlash(true)
     setTimeout(() => setTriggerFlash(false), 200)
 
+    // กลยุทธ์ Hybrid:
+    // 1. ลองยิง DSLR ก่อน (เฉพาะถ้ายังไม่เคยล้มเหลวมาก่อน)
+    // 2. ถ้า Fail -> Fallback มาใช้ Webcam (videoRef)
+
+    let dslrSuccess = false
+
+    // เช็คว่าเคย Fail มาก่อนไหม ถ้าเคยแล้ว ให้ข้ามไป Webcam เลยเพื่อความเร็ว
+    const skipDslr = useRef(false) // ใช้ ref เพื่อจำค่าใน session นี้
+
+    if (!skipDslr.current) {
+      try {
+        // ส่ง request ไป trigger DSLR
+        const formData = new FormData()
+        formData.append('step', step)
+        // Time out สั้นๆ 3 วินาที เผื่อไม่ได้ต่อกล้องจะได้รีบตัดไป Webcam
+        const res = await axios.post(`${API_URL}/trigger_dslr`, formData, { timeout: 3000 })
+
+        if (res.data.status === 'success') {
+          dslrSuccess = true
+          const imgUrl = res.data.image_url
+
+          // Preload รูปที่ได้จาก DSLR เพื่อความชัวร์
+          const img = new Image()
+          img.onload = () => {
+            setShotImgs(prev => {
+              const n = [...prev]
+              n[step - 1] = img
+              return n
+            })
+            proceedToNext(step)
+          }
+          img.onerror = () => {
+            // รูปโหลดไม่ได้? แปลกมาก แต่กันเหนียว
+            console.error("DSLR Image load failed")
+            fallbackWebcam(step)
+          }
+          img.src = imgUrl
+        }
+      } catch (e) {
+        console.log("DSLR Trigger Failed or Timeout (Switching to Webcam):", e)
+        skipDslr.current = true // ครั้งหน้าไม่ต้องลองแล้ว
+      }
+    }
+
+    if (!dslrSuccess) {
+      fallbackWebcam(step)
+    }
+  }
+
+  const fallbackWebcam = (step) => {
     if (!videoRef.current) return
     const vid = videoRef.current
 
@@ -252,28 +316,37 @@ function PhotoboothPage() {
       const formData = new FormData()
       formData.append('step', step)
       formData.append('file', blob, `shot_${step}.jpg`)
-      
-      try { await axios.post(`${API_URL}/capture_step`, formData) } 
+
+      try { await axios.post(`${API_URL}/capture_step`, formData) }
       catch (e) { console.error("Upload Failed:", e) }
 
-      // ไปช็อตต่อไป หรือ จบ
-      setTimeout(() => {
-        if (step < (frameSlots.length || 4)) {
-          setCurrentShot(step + 1)
-          doCountdown(step + 1, 3)
-        } else {
-          finishSession()
-        }
-      }, 2000)
+      proceedToNext(step)
+
     }, 'image/jpeg', 0.95)
+  }
+
+  const proceedToNext = (step) => {
+    // ไปช็อตต่อไป หรือ จบ
+    setTimeout(() => {
+      if (step < (frameSlots.length || 4)) {
+        setCurrentShot(step + 1)
+        doCountdown(step + 1, 3)
+      } else {
+        finishSession()
+      }
+    }, 2000)
   }
 
   const finishSession = async () => {
     if (!selectedFrame) return
     setIsProcessing(true)
     try {
-      const res = await axios.post(`${API_URL}/merge?frame_id=${selectedFrame}`)
+      const formData = new FormData()
+      formData.append('frame_id', selectedFrame)
+      const res = await axios.post(`${API_URL}/merge`, formData)
+
       if (res.data.status === 'success') {
+        playJingle()
         setFinalPhoto(res.data.image_url)
         setFinalFilename(res.data.filename)
       }
@@ -287,21 +360,24 @@ function PhotoboothPage() {
 
   // ... (Print, Back, Reset, Home Logic เหมือนเดิม) ...
   const handlePrint = async () => {
+    playClick()
     if (!finalFilename) return
     setIsPrinting(true)
     try {
       const res = await axios.post(`${API_URL}/print/${finalFilename}`)
       alert(res.data.status === 'success' ? "กำลังส่งคำสั่งไปที่เครื่องปริ้น... 🖨️" : "Print Error")
-    } catch (e) { alert("Print Error") } 
+    } catch (e) { alert("Print Error") }
     finally { setIsPrinting(false) }
   }
 
   const handleBack = async () => {
-    try { await axios.delete(`${API_URL}/cleanup`) } catch (e) {}
+    playBack()
+    try { await axios.delete(`${API_URL}/cleanup`) } catch (e) { }
     navigate('/select-frame')
   }
 
   const reset = async () => {
+    playClick()
     await axios.delete(`${API_URL}/cleanup`)
     setFinalPhoto(null)
     setFinalFilename(null)
@@ -310,6 +386,7 @@ function PhotoboothPage() {
   }
 
   const goHome = async () => {
+    playBack()
     await axios.delete(`${API_URL}/cleanup`)
     navigate('/')
   }
@@ -324,7 +401,7 @@ function PhotoboothPage() {
 
       <div className={`flash-overlay ${triggerFlash ? 'active' : ''}`}></div>
       <video ref={videoRef} className="hidden-video" playsInline muted autoPlay />
-      
+
       {countdown && <div className="overlay-text countdown">{countdown}</div>}
       {isProcessing && <div className="overlay-text message processing">✓ กำลังประมวลผล...</div>}
       {isPrinting && <div className="overlay-text message printing">🖨️ ส่งคำสั่งไปปริ้น...</div>}
@@ -344,7 +421,7 @@ function PhotoboothPage() {
             <div className="cam-box">
               <canvas ref={mainCanvasRef} className="cam-canvas" />
               <div className="badge badge-live">LIVE CAMERA</div>
-              
+
               {/* Bubble Filter Bar */}
               {currentShot === 0 && (
                 <div className="filter-scroll-container">
@@ -352,7 +429,7 @@ function PhotoboothPage() {
                     {Object.values(FILTER_PRESETS).map((preset) => (
                       <button
                         key={preset.id}
-                        onClick={() => setActiveFilter(preset.id)}
+                        onClick={() => { playClick(); setActiveFilter(preset.id) }}
                         className={`filter-item ${activeFilter === preset.id ? 'active' : ''}`}
                       >
                         <div className={`filter-bubble bubble-${preset.id}`}></div>
@@ -363,9 +440,9 @@ function PhotoboothPage() {
                 </div>
               )}
             </div>
-            
+
             {currentShot === 0 ? (
-              <button onClick={startSession} className="btn btn-primary btn-lg" style={{marginTop: '20px'}}>
+              <button onClick={startSession} className="btn btn-primary btn-lg" style={{ marginTop: '20px' }}>
                 📸 เริ่มถ่าย
               </button>
             ) : (

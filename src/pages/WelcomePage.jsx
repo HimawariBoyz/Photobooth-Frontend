@@ -1,11 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import useSound from '../hooks/useSound';
 import { gsap } from 'gsap';
 import '../styles/WelcomePage.css';
 import bgImage from '../assets/background/Photobooth2.png';
 
 function WelcomePage() {
   const navigate = useNavigate();
+  const { playClick } = useSound();
   const comp = useRef(null);
 
   // สร้างหิมะ 50 ก้อน
@@ -60,7 +62,10 @@ function WelcomePage() {
           </div>
 
           <div className="btn-start-wrapper">
-            <button className="btn-start" onClick={() => navigate('/select-frame')}>
+            <button className="btn-start" onClick={() => {
+              playClick();
+              navigate('/select-frame');
+            }}>
               START 📸
             </button>
           </div>

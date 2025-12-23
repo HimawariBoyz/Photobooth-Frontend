@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import useSound from '../hooks/useSound'
 import axios from 'axios'
-import '../styles/SelectFramePage.css' // ตรวจสอบ path ให้ตรงกับโฟลเดอร์ของคุณนะครับ
+import { API_URL } from '../config'
+import '../styles/SelectFramePage.css'
 
 function SelectFramePage() {
   const navigate = useNavigate()
-  const API_URL = 'http://localhost:8000'
-  const ITEMS_PER_PAGE = 20 // เพิ่มจำนวนรูปต่อหน้าให้เหมาะกับจอกว้างขึ้น
+  const { playClick, playSelect, playBack } = useSound()
+
+  const ITEMS_PER_PAGE = 20
 
   const [frames, setFrames] = useState([])
   const [selectedId, setSelectedId] = useState(null)
@@ -35,7 +38,11 @@ function SelectFramePage() {
       setFrames(Array.isArray(res.data) ? res.data : [])
       setCurrentPage(1)
     } catch (e) {
-      setError('ไม่สามารถเชื่อมต่อ Server ได้')
+      console.error(e)
+      const msg = e.response?.data?.error || e.message
+      const trace = e.response?.data?.trace
+      setError(`Error: ${msg} ${trace ? '(Check Console for Trace)' : ''}`)
+      if (trace) console.error("Backend Trace:", trace)
     } finally {
       setLoading(false)
     }
@@ -46,11 +53,13 @@ function SelectFramePage() {
   }, [])
 
   const confirm = () => {
+    playClick()
     if (!selectedId) return
     navigate('/booth', { state: { selectedFrame: selectedId } })
   }
 
   const handleSelect = (id) => {
+    playSelect()
     setSelectedId(id)
   }
 
@@ -108,7 +117,7 @@ function SelectFramePage() {
         <div className="sf-topbar">
           <button
             className="sf-icon-btn sf-btn-back"
-            onClick={() => navigate('/')}
+            onClick={() => { playBack(); navigate('/'); }}
             title="ย้อนกลับ"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -124,7 +133,7 @@ function SelectFramePage() {
           <div className="sf-actions">
             <button
               className={`sf-icon-btn sf-btn-refresh ${loading ? 'is-loading' : ''}`}
-              onClick={fetchFrames}
+              onClick={() => { playClick(); fetchFrames(); }}
               disabled={loading}
               title="รีเฟรชข้อมูล"
             >
@@ -140,7 +149,21 @@ function SelectFramePage() {
         {error && (
           <div className="sf-banner sf-banner--error">
             <span>{error}</span>
-            <button className="sf-link" onClick={fetchFrames}>ลองใหม่</button>
+            <div style={{ fontSize: '0.8rem', marginTop: '4px', opacity: 0.8 }}>
+              URL: {API_URL}
+            </div>
+            <button className="sf-link" onClick={() => { playClick(); fetchFrames(); }}>ลองใหม่</button>
+          </div>
+        )}
+
+        {/* Debug Info if no frames found */}
+        {!loading && !error && frames.length === 0 && (
+          <div className="sf-banner sf-banner--warning">
+            <span>ไม่พบกรอบรูปภาพ</span>
+            <div style={{ fontSize: '0.8rem', marginTop: '4px', opacity: 0.8 }}>
+              API: {API_URL}/frames-list
+            </div>
+            <button className="sf-link" onClick={() => { playClick(); fetchFrames(); }}>รีเฟรช</button>
           </div>
         )}
 
@@ -182,7 +205,7 @@ function SelectFramePage() {
                     <button
                       key={pageNum}
                       className={`sf-page-btn ${currentPage === pageNum ? 'active' : ''}`}
-                      onClick={() => handlePageChange(pageNum)}
+                      onClick={() => { playClick(); handlePageChange(pageNum); }}
                     >
                       {pageNum}
                     </button>
