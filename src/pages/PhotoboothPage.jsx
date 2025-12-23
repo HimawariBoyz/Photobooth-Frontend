@@ -21,7 +21,7 @@ const FILTER_PRESETS = {
 function PhotoboothPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { playClick, playSnap, playJingle, playBack } = useSound()
+  const { playClick, playSnap, playJingle, playBack, pauseBgm, startBgm } = useSound()
 
   // --- Config & State ---
 
@@ -46,20 +46,25 @@ function PhotoboothPage() {
   const composeCanvasRef = useRef(null)
   const frameImgRef = useRef(null)
   const rafRef = useRef(null)
+  const skipDslr = useRef(false)
 
   // 1. Check Access
   useEffect(() => {
     if (!selectedFrame) navigate('/')
   }, [selectedFrame, navigate])
 
-  const frameUrl = selectedFrame
-    ? (selectedFrame.includes('http') ? selectedFrame : `${API_URL}/frames/${selectedFrame}`)
+  // Extract ID and URL safely from selectedFrame (which should be an object)
+  const frameId = selectedFrame?.id
+  const rawUrl = selectedFrame?.url
+
+  const frameUrl = rawUrl
+    ? (rawUrl.includes('http') ? rawUrl : `${API_URL}/frames/${rawUrl}`)
     : null
 
   // 2. Load Frame Data
   useEffect(() => {
     if (!selectedFrame) return
-    axios.get(`${API_URL}/frame-props/${selectedFrame}`)
+    axios.get(`${API_URL}/frame-props/${frameId}`)
       .then(res => {
         if (res.data.slots) setFrameSlots(res.data.slots)
       })
@@ -100,7 +105,17 @@ function PhotoboothPage() {
     }
   }, [])
 
-  // 4. Preload Frame Image
+  // 4. Preload Frame Image & Audio Logic
+  useEffect(() => {
+    // Pause BGM when entering booth
+    pauseBgm()
+
+    return () => {
+      // Resume BGM when leaving booth (cleanup)
+      startBgm()
+    }
+  }, []) // Run once on mount/unmount
+
   useEffect(() => {
     if (!frameUrl) return
     setIsFrameLoaded(false)
@@ -242,7 +257,7 @@ function PhotoboothPage() {
     let dslrSuccess = false
 
     // เช็คว่าเคย Fail มาก่อนไหม ถ้าเคยแล้ว ให้ข้ามไป Webcam เลยเพื่อความเร็ว
-    const skipDslr = useRef(false) // ใช้ ref เพื่อจำค่าใน session นี้
+    // const skipDslr = useRef(false) // Moved to top level
 
     if (!skipDslr.current) {
       try {
@@ -342,7 +357,7 @@ function PhotoboothPage() {
     setIsProcessing(true)
     try {
       const formData = new FormData()
-      formData.append('frame_id', selectedFrame)
+      formData.append('frame_id', frameId)
       const res = await axios.post(`${API_URL}/merge`, formData)
 
       if (res.data.status === 'success') {

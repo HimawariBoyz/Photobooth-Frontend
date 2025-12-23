@@ -23,6 +23,8 @@ function SelectFramePage() {
     [frames, selectedId]
   )
 
+  const frameId = selectedFrame?.id || null
+
   const totalPages = Math.ceil(frames.length / ITEMS_PER_PAGE)
 
   const currentFrames = useMemo(() => {
@@ -55,7 +57,7 @@ function SelectFramePage() {
   const confirm = () => {
     playClick()
     if (!selectedId) return
-    navigate('/booth', { state: { selectedFrame: selectedId } })
+    navigate('/booth', { state: { selectedFrame } })
   }
 
   const handleSelect = (id) => {

@@ -8,6 +8,7 @@ export const SoundContext = createContext(null);
 
 export const SoundProvider = ({ children }) => {
     const [isBgmPlaying, setIsBgmPlaying] = useState(false);
+    const [isMuted, setIsMuted] = useState(false); // State for global mute
     const bgmRef = useRef(null);
     const audioContextRef = useRef(null);
 
@@ -24,6 +25,13 @@ export const SoundProvider = ({ children }) => {
             }
         };
     }, []);
+
+    // Effect to handle Mute for BGM
+    useEffect(() => {
+        if (bgmRef.current) {
+            bgmRef.current.muted = isMuted;
+        }
+    }, [isMuted]);
 
     const startBgm = useCallback(() => {
         if (bgmRef.current && bgmRef.current.paused) {
@@ -48,7 +56,12 @@ export const SoundProvider = ({ children }) => {
         }
     }, [isBgmPlaying, pauseBgm, startBgm]);
 
-    // Initial user interaction handler to unlock audio context and start BGM
+    // Toggle Global Mute
+    const toggleMute = useCallback(() => {
+        setIsMuted(prev => !prev);
+    }, []);
+
+    // Initial user interaction handler
     const handleUserInteraction = useCallback(() => {
         if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
             audioContextRef.current.resume();
@@ -56,7 +69,7 @@ export const SoundProvider = ({ children }) => {
         startBgm();
     }, [startBgm]);
 
-    // --- SFX Logic (similar to original useSound but managed here) ---
+    // --- SFX Logic ---
 
     const getContext = useCallback(() => {
         if (!audioContextRef.current) {
@@ -66,6 +79,9 @@ export const SoundProvider = ({ children }) => {
     }, []);
 
     const playFallback = useCallback((type) => {
+        // If muted, do not play fallback
+        if (isMuted) return;
+
         try {
             const ctx = getContext();
             const osc = ctx.createOscillator();
@@ -103,11 +119,14 @@ export const SoundProvider = ({ children }) => {
         } catch (e) {
             console.warn("Fallback sound failed:", e);
         }
-    }, [getContext]);
+    }, [getContext, isMuted]);
 
     const playSound = useCallback((url, type, volume = 1.0) => {
-        // Ensure AudioContext is ready on any sound play
+        // Ensure AudioContext is ready
         handleUserInteraction();
+
+        // If muted, do not play file sound
+        if (isMuted) return;
 
         try {
             const audio = new Audio(url);
@@ -122,7 +141,7 @@ export const SoundProvider = ({ children }) => {
         } catch (e) {
             playFallback(type);
         }
-    }, [handleUserInteraction, playFallback]);
+    }, [handleUserInteraction, playFallback, isMuted]);
 
     // Exposed SFX functions
     const playClick = useCallback(() => playSound(clickSoundUrl, 'click', 0.5), [playSound]);
@@ -137,9 +156,11 @@ export const SoundProvider = ({ children }) => {
     return (
         <SoundContext.Provider value={{
             isBgmPlaying,
+            isMuted,
             startBgm,
             pauseBgm,
             toggleBgm,
+            toggleMute,
             playClick,
             playSnap,
             playJingle,
