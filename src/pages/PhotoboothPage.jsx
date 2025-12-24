@@ -159,70 +159,46 @@ function PhotoboothPage() {
     ctx.filter = 'none'
   }
 
-  // 5. Render Loop (Live View)
+  // 5. Optimized Preview Rendering (Only update when data changes)
   useEffect(() => {
-    const renderLoop = () => {
-      if (mainCanvasRef.current && videoRef.current && videoRef.current.readyState >= 2) {
-        const cvs = mainCanvasRef.current
-        const ctx = cvs.getContext('2d')
-        const vid = videoRef.current
+    // Only redraw the preview canvas
+    if (composeCanvasRef.current) {
+      const cvs = composeCanvasRef.current
+      const ctx = cvs.getContext('2d')
 
-        if (cvs.width !== cvs.clientWidth || cvs.height !== cvs.clientHeight) {
-          cvs.width = cvs.clientWidth
-          cvs.height = cvs.clientHeight
-        }
-
-        drawCover(ctx, vid, cvs.width, cvs.height, FILTER_PRESETS[activeFilter], true)
+      // Ensure canvas size matches display size
+      if (cvs.width !== cvs.clientWidth || cvs.height !== cvs.clientHeight) {
+        cvs.width = cvs.clientWidth
+        cvs.height = cvs.clientHeight
       }
 
-      // Preview (Miniature frame view)
-      if (composeCanvasRef.current) {
-        const cvs = composeCanvasRef.current
-        const ctx = cvs.getContext('2d')
-        if (cvs.width !== cvs.clientWidth || cvs.height !== cvs.clientHeight) {
-          cvs.width = cvs.clientWidth
-          cvs.height = cvs.clientHeight
+      const w = cvs.width
+      const h = cvs.height
+
+      ctx.clearRect(0, 0, w, h)
+      ctx.fillStyle = '#f0f0f0'
+      ctx.fillRect(0, 0, w, h)
+
+      // Draw shots in slots
+      shotImgs.forEach((img, idx) => {
+        const slotIndex = idx % frameSlots.length
+        const s = frameSlots[slotIndex]
+        if (img && s) {
+          const dx = s.nx * w
+          const dy = s.ny * h
+          const dw = s.nw * w
+          const dh = s.nh * h
+          ctx.drawImage(img, dx, dy, dw, dh)
         }
+      })
 
-        const w = cvs.width
-        const h = cvs.height
-
-        ctx.fillStyle = '#f0f0f0'
-        ctx.fillRect(0, 0, w, h)
-
-        // Draw shots in slots
-        // Note: frameSlots are normalized (nx, ny, nw, nh) by my imageUtils update?
-        // Wait, my imageUtils `detectSlots` returned normalized nx, ny, nw, nh as well as x,y,w,h.
-        // Let's use normalized values for responsiveness.
-
-        shotImgs.forEach((img, idx) => {
-          const slotIndex = idx % frameSlots.length
-          const s = frameSlots[slotIndex]
-          if (img && s) {
-            // Draw logic for preview (simple stretch for preview is ok, or fit)
-            // But let's verify what `detectSlots` returns.
-            // It returns { x, y, w, h, nx, ny, nw, nh }
-
-            const dx = s.nx * w
-            const dy = s.ny * h
-            const dw = s.nw * w
-            const dh = s.nh * h
-
-            ctx.drawImage(img, dx, dy, dw, dh)
-          }
-        })
-
-        // Draw frame over
-        if (frameImgRef.current && isFrameLoaded) {
-          ctx.drawImage(frameImgRef.current, 0, 0, w, h)
-        }
+      // Draw frame over
+      if (frameImgRef.current && isFrameLoaded) {
+        ctx.drawImage(frameImgRef.current, 0, 0, w, h)
       }
-      rafRef.current = requestAnimationFrame(renderLoop)
     }
+  }, [shotImgs, frameSlots, isFrameLoaded]) // Removed activeFilter dependency as preview usually shows raw shots or final comp. If filters should be shown in preview, we can add logic, but usually preview in this app was just showing the accumulation. Actually, `shotImgs` are the captured images which are processed? No, capture logic saves the image from the canvas (which has filter). So shotImgs ARE filtered.
 
-    rafRef.current = requestAnimationFrame(renderLoop)
-    return () => cancelAnimationFrame(rafRef.current)
-  }, [shotImgs, frameSlots, activeFilter, isFrameLoaded])
 
   // 6. Shooting Process
   const startSession = () => {
@@ -401,7 +377,6 @@ function PhotoboothPage() {
       </button>
 
       <div className={`flash-overlay ${triggerFlash ? 'active' : ''}`}></div>
-      <video ref={videoRef} className="hidden-video" playsInline muted autoPlay />
 
       {countdown && <div className="overlay-text countdown">{countdown}</div>}
       {isProcessing && <div className="overlay-text message processing">✓ กำลังประมวลผล...</div>}
@@ -420,10 +395,19 @@ function PhotoboothPage() {
         <div className="capture-view">
           <div className="cam-section">
             <div className="cam-box">
-              <canvas ref={mainCanvasRef} className="cam-canvas" />
+              <video
+                ref={videoRef}
+                className="live-video"
+                playsInline
+                muted
+                autoPlay
+                style={{
+                  filter: FILTER_PRESETS[activeFilter]?.filter || 'none',
+                  transform: 'scaleX(-1)'
+                }}
+              />
               <div className="badge badge-live">LIVE CAMERA</div>
 
-              {/* Bubble Filter Bar */}
               {currentShot === 0 && (
                 <div className="filter-scroll-container">
                   <div className="filter-bar">

@@ -47,12 +47,10 @@ function SelectFramePage() {
   }, [frames, currentPage, ITEMS_PER_PAGE])
 
   const fetchFrames = () => {
-    // Just fake refresh effect
     setLoading(true)
-    setTimeout(() => {
-      setFrames(STATIC_FRAMES)
-      setLoading(false)
-    }, 300)
+    // Instant load
+    setFrames(STATIC_FRAMES)
+    setLoading(false)
   }
 
   // Effect not strictly needed if we init state directly, but good for consistency

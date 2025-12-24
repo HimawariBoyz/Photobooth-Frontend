@@ -10,13 +10,27 @@ export async function detectSlots(frameUrl) {
         const img = new Image();
         img.crossOrigin = "anonymous";
         img.onload = () => {
-            const w = img.width;
-            const h = img.height;
+            const originalW = img.width;
+            const originalH = img.height;
+
+            // --- OPTIMIZATION: Downsample for detection ---
+            // Scanning pixels on 4K images is slow. We scale down to ~1000px max dimension.
+            const MAX_DIM = 1000;
+            let scale = 1;
+            if (originalW > MAX_DIM || originalH > MAX_DIM) {
+                scale = Math.min(MAX_DIM / originalW, MAX_DIM / originalH);
+            }
+
+            const w = Math.floor(originalW * scale);
+            const h = Math.floor(originalH * scale);
+
             const canvas = document.createElement('canvas');
             canvas.width = w;
             canvas.height = h;
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            ctx.drawImage(img, 0, 0);
+
+            // Draw scaled image
+            ctx.drawImage(img, 0, 0, w, h);
 
             const imageData = ctx.getImageData(0, 0, w, h);
             const data = imageData.data;
@@ -30,7 +44,6 @@ export async function detectSlots(frameUrl) {
             let foundTransparentParam = false;
 
             // 1. First Pass: Check for Alpha Transparency
-            // We do a quick check to see if there is ANY transparency.
             let hasAlpha = false;
             for (let i = 3; i < data.length; i += 4) {
                 if (data[i] < 255) {
@@ -39,9 +52,7 @@ export async function detectSlots(frameUrl) {
                 }
             }
 
-            // Detection Function
             const runDetection = (isAlphaCheck) => {
-                // Reset visited
                 visited.fill(0);
                 const foundSlots = [];
 
@@ -55,7 +66,6 @@ export async function detectSlots(frameUrl) {
                             if (data[idx * 4 + 3] < ALPHA_THRESHOLD) isSlotPixel = true;
                         } else {
                             // Check for White (Luminance > 240)
-                            // Simple avg or real luma
                             const r = data[idx * 4];
                             const g = data[idx * 4 + 1];
                             const b = data[idx * 4 + 2];
@@ -68,10 +78,18 @@ export async function detectSlots(frameUrl) {
                             const slotW = maxX - minX + 1;
                             const slotH = maxY - minY + 1;
 
-                            if (count > MIN_SLOT_SIZE && slotW > 20 && slotH > 20) {
+                            if (count > MIN_SLOT_SIZE && slotW > 10 && slotH > 10) { // Reduced min size for scaled image
+                                // Scale BACK to original coordinates
                                 foundSlots.push({
-                                    x: minX, y: minY, w: slotW, h: slotH,
-                                    nx: minX / w, ny: minY / h, nw: slotW / w, nh: slotH / h
+                                    x: Math.floor(minX / scale),
+                                    y: Math.floor(minY / scale),
+                                    w: Math.floor(slotW / scale),
+                                    h: Math.floor(slotH / scale),
+                                    // Normalized coords remain the same (proportional)
+                                    nx: minX / w,
+                                    ny: minY / h,
+                                    nw: slotW / w,
+                                    nh: slotH / h
                                 });
                             }
                         } else {
@@ -89,7 +107,6 @@ export async function detectSlots(frameUrl) {
                 foundTransparentParam = true;
             }
 
-            // Fallback: If no slots found via alpha (or no alpha existed), try White detection
             if (detected.length === 0) {
                 detected = runDetection(false);
                 foundTransparentParam = false;
@@ -97,13 +114,13 @@ export async function detectSlots(frameUrl) {
 
             // Sort slots
             detected.sort((a, b) => {
-                const rowA = Math.floor(a.y / 20);
-                const rowB = Math.floor(b.y / 20);
-                if (rowA !== rowB) return rowA - rowB;
+                const rowA = Math.floor(a.y / 20); // This logic might need tweak on original size, but Y is already scaled back
+                const rowB = Math.floor(b.y / 20); // Actually let's use normalized NY for sorting to be safe or scaled Y
+                if (Math.abs(a.ny - b.ny) > 0.1) return a.ny - b.ny; // Better row sort
                 return a.x - b.x;
             });
 
-            resolve({ width: w, height: h, slots: detected, isTransparent: foundTransparentParam });
+            resolve({ width: originalW, height: originalH, slots: detected, isTransparent: foundTransparentParam });
         };
         img.onerror = (err) => reject(err);
         img.src = frameUrl;
