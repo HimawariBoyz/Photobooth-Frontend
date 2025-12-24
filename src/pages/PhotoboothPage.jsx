@@ -58,7 +58,7 @@ function PhotoboothPage() {
   const rawUrl = selectedFrame?.url
 
   const frameUrl = rawUrl
-    ? (rawUrl.includes('http') ? rawUrl : `${API_URL}/frames/${rawUrl}`)
+    ? (rawUrl.startsWith('/') || rawUrl.includes('data:') || rawUrl.includes('http') ? rawUrl : `${API_URL}/frames/${rawUrl}`)
     : null
 
   // 2. Load Frame Data

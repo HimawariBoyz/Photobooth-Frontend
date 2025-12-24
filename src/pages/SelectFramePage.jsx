@@ -11,9 +11,28 @@ function SelectFramePage() {
 
   const ITEMS_PER_PAGE = 20
 
-  const [frames, setFrames] = useState([])
+  // Use eager import to get URL/paths directly
+  const frameModules = import.meta.glob('../assets/frames/*.png', { eager: true })
+
+  // Convert to array
+  const STATIC_FRAMES = Object.entries(frameModules).map(([path, mod], index) => {
+    // path is like "../assets/frames/Frame1.png"
+    const filename = path.split('/').pop()
+    return {
+      id: filename, // Use filename as ID to match backend logic if possible, or just unique string
+      name: filename,
+      url: mod.default // The resolved URL (e.g. /assets/Frame1.png)
+    }
+  }).sort((a, b) => {
+    // Natural sort order for frames (Frame1, Frame2, ... Frame10)
+    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+  })
+
+  // State
+  const [frames, setFrames] = useState(STATIC_FRAMES)
   const [selectedId, setSelectedId] = useState(null)
-  const [loading, setLoading] = useState(true)
+  // No loading needed for local assets
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
   const [currentPage, setCurrentPage] = useState(1)
@@ -32,26 +51,17 @@ function SelectFramePage() {
     return frames.slice(start, start + ITEMS_PER_PAGE)
   }, [frames, currentPage, ITEMS_PER_PAGE])
 
-  const fetchFrames = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const res = await axios.get(`${API_URL}/frames-list`)
-      setFrames(Array.isArray(res.data) ? res.data : [])
-      setCurrentPage(1)
-    } catch (e) {
-      console.error(e)
-      const msg = e.response?.data?.error || e.message
-      const trace = e.response?.data?.trace
-      setError(`Error: ${msg} ${trace ? '(Check Console for Trace)' : ''}`)
-      if (trace) console.error("Backend Trace:", trace)
-    } finally {
-      setLoading(false)
-    }
+  const fetchFrames = () => {
+    // Just reset or re-read if needed, but for static it's a no-op or just reset
+    setFrames(STATIC_FRAMES)
+    setLoading(true)
+    // Fake small delay to show refresh effect if user clicks it
+    setTimeout(() => setLoading(false), 300)
   }
 
+  // Effect not strictly needed if we init state directly, but good for consistency
   useEffect(() => {
-    fetchFrames()
+    setFrames(STATIC_FRAMES)
   }, [])
 
   const confirm = () => {
