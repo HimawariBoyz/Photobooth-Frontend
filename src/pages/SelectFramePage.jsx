@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useSound from '../hooks/useSound'
-import axios from 'axios'
-import { API_URL } from '../config'
 import '../styles/SelectFramePage.css'
 
 function SelectFramePage() {
@@ -19,7 +17,7 @@ function SelectFramePage() {
     // path is like "../assets/frames/Frame1.png"
     const filename = path.split('/').pop()
     return {
-      id: filename, // Use filename as ID to match backend logic if possible, or just unique string
+      id: filename,
       name: filename,
       url: mod.default // The resolved URL (e.g. /assets/Frame1.png)
     }
@@ -31,18 +29,15 @@ function SelectFramePage() {
   // State
   const [frames, setFrames] = useState(STATIC_FRAMES)
   const [selectedId, setSelectedId] = useState(null)
+
   // No loading needed for local assets
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-
   const [currentPage, setCurrentPage] = useState(1)
 
   const selectedFrame = useMemo(
     () => frames.find(f => f.id === selectedId) || null,
     [frames, selectedId]
   )
-
-  const frameId = selectedFrame?.id || null
 
   const totalPages = Math.ceil(frames.length / ITEMS_PER_PAGE)
 
@@ -52,11 +47,12 @@ function SelectFramePage() {
   }, [frames, currentPage, ITEMS_PER_PAGE])
 
   const fetchFrames = () => {
-    // Just reset or re-read if needed, but for static it's a no-op or just reset
-    setFrames(STATIC_FRAMES)
+    // Just fake refresh effect
     setLoading(true)
-    // Fake small delay to show refresh effect if user clicks it
-    setTimeout(() => setLoading(false), 300)
+    setTimeout(() => {
+      setFrames(STATIC_FRAMES)
+      setLoading(false)
+    }, 300)
   }
 
   // Effect not strictly needed if we init state directly, but good for consistency
@@ -158,23 +154,10 @@ function SelectFramePage() {
           </div>
         </div>
 
-        {error && (
-          <div className="sf-banner sf-banner--error">
-            <span>{error}</span>
-            <div style={{ fontSize: '0.8rem', marginTop: '4px', opacity: 0.8 }}>
-              URL: {API_URL}
-            </div>
-            <button className="sf-link" onClick={() => { playClick(); fetchFrames(); }}>ลองใหม่</button>
-          </div>
-        )}
-
         {/* Debug Info if no frames found */}
-        {!loading && !error && frames.length === 0 && (
+        {!loading && frames.length === 0 && (
           <div className="sf-banner sf-banner--warning">
-            <span>ไม่พบกรอบรูปภาพ</span>
-            <div style={{ fontSize: '0.8rem', marginTop: '4px', opacity: 0.8 }}>
-              API: {API_URL}/frames-list
-            </div>
+            <span>ไม่พบกรอบรูปภาพในโฟลเดอร์ src/assets/frames/</span>
             <button className="sf-link" onClick={() => { playClick(); fetchFrames(); }}>รีเฟรช</button>
           </div>
         )}

@@ -3,7 +3,8 @@ import useSound from '../hooks/useSound'
 import axios from 'axios'
 import { useNavigate, useLocation } from 'react-router-dom'
 import '../styles/PhotoboothPage.css'
-import { API_URL } from '../config'
+import { API_URL, ENABLE_DSLR } from '../config'
+import { detectSlots, mergeImages, printImage, downloadImage } from '../utils/imageUtils'
 
 // --- FILTER PRESETS ---
 const FILTER_PRESETS = {
@@ -29,7 +30,7 @@ function PhotoboothPage() {
   const selectedFrame = location.state?.selectedFrame
 
   const [finalPhoto, setFinalPhoto] = useState(null)
-  const [finalFilename, setFinalFilename] = useState(null)
+
   const [countdown, setCountdown] = useState(null)
   const [currentShot, setCurrentShot] = useState(0)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -46,6 +47,11 @@ function PhotoboothPage() {
   const composeCanvasRef = useRef(null)
   const frameImgRef = useRef(null)
   const rafRef = useRef(null)
+
+  // Use Ref to track shots to avoid stale closures in timeouts
+  const shotImgsRef = useRef([])
+
+  // Skip DSLR if it failed once to speed up subsequent shots
   const skipDslr = useRef(false)
 
   // 1. Check Access
@@ -53,23 +59,31 @@ function PhotoboothPage() {
     if (!selectedFrame) navigate('/')
   }, [selectedFrame, navigate])
 
-  // Extract ID and URL safely from selectedFrame (which should be an object)
-  const frameId = selectedFrame?.id
-  const rawUrl = selectedFrame?.url
+  const frameUrl = selectedFrame?.url
 
-  const frameUrl = rawUrl
-    ? (rawUrl.startsWith('/') || rawUrl.includes('data:') || rawUrl.includes('http') ? rawUrl : `${API_URL}/frames/${rawUrl}`)
-    : null
-
-  // 2. Load Frame Data
+  // 2. Load Frame Data (Detect Slots Locally)
   useEffect(() => {
-    if (!selectedFrame) return
-    axios.get(`${API_URL}/frame-props/${frameId}`)
-      .then(res => {
-        if (res.data.slots) setFrameSlots(res.data.slots)
-      })
-      .catch(err => console.error(err))
-  }, [selectedFrame])
+    if (!frameUrl) return
+    setIsFrameLoaded(false)
+
+    // Detect slots from the image directly
+    detectSlots(frameUrl).then(data => {
+      setFrameSlots(data.slots || [])
+      // Also pre-load image for drawing
+      const img = new Image()
+      img.crossOrigin = "anonymous"
+      img.onload = () => {
+        frameImgRef.current = img
+        setIsFrameLoaded(true)
+      }
+      img.src = frameUrl
+    }).catch(err => {
+      console.error("Failed to detect slots:", err)
+      alert("Error loading frame. Please try again.")
+      navigate('/select-frame')
+    })
+
+  }, [frameUrl, navigate])
 
   // 3. Init Camera
   useEffect(() => {
@@ -81,11 +95,8 @@ function PhotoboothPage() {
         })
         if (videoRef.current) {
           videoRef.current.srcObject = stream
-          // ไม่ต้อง call play() เพราะมี autoPlay attribute แล้ว
-          // รอให้ video พร้อมก่อน render
           videoRef.current.onloadedmetadata = () => {
             videoRef.current?.play().catch(err => {
-              // Ignore AbortError
               if (err.name !== 'AbortError') {
                 console.error("Video play error:", err)
               }
@@ -94,6 +105,9 @@ function PhotoboothPage() {
         }
       } catch (err) {
         console.error("Camera Error:", err)
+        // Don't alert here immediately, maybe just log. Fallback to DSLR might be intended?
+        // But usually webcam is needed for live view regardless.
+        alert("Camera (Webcam) access denied. Live view may not work.")
       }
     }
     initCamera()
@@ -105,55 +119,33 @@ function PhotoboothPage() {
     }
   }, [])
 
-  // 4. Preload Frame Image & Audio Logic
+  // 4. Audio & Cleanup
   useEffect(() => {
-    // Pause BGM when entering booth
     pauseBgm()
-
     return () => {
-      // Resume BGM when leaving booth (cleanup)
       startBgm()
     }
-  }, []) // Run once on mount/unmount
+  }, [pauseBgm, startBgm])
 
-  useEffect(() => {
-    if (!frameUrl) return
-    setIsFrameLoaded(false)
-    const img = new Image()
-    img.crossOrigin = "anonymous"
-    img.onload = () => {
-      frameImgRef.current = img
-      setIsFrameLoaded(true)
-    }
-    img.src = frameUrl
-  }, [frameUrl])
 
-  // --- 🔥 CORE LOGIC: SCALE TO COVER (ตัดขอบดำทิ้ง) ---
-  // ฟังก์ชันนี้ใช้สำหรับวาดภาพลง Canvas (ทั้ง Live View และตอน Snap)
+  // --- CORE LOGIC: SCALE TO COVER ---
   const drawCover = (ctx, img, cw, ch, preset, isMirror = true) => {
     const vw = img.videoWidth || img.width
     const vh = img.videoHeight || img.height
+    // Avoid div by zero
+    if (!vw || !vh) return
 
-    // 1. คำนวณ Scale ที่มากที่สุด เพื่อให้ภาพขยายจนเต็มพื้นที่ (ส่วนเกินจะล้นออกไป)
     const scale = Math.max(cw / vw, ch / vh)
-
-    // 2. คำนวณขนาดภาพใหม่
     const dw = vw * scale
     const dh = vh * scale
 
-    // 3. ย้ายจุดวาดไปที่กึ่งกลางจอ
     ctx.translate(cw / 2, ch / 2)
-
-    // 4. กลับด้าน (Mirror) ถ้าต้องการ
     if (isMirror) ctx.scale(-1, 1)
 
-    // 5. Apply Filter
     if (preset) ctx.filter = preset.filter
 
-    // 6. วาดภาพโดยให้จุดกึ่งกลางภาพอยู่ที่ (0,0)
     ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
 
-    // 7. Overlay Filter (ถ้ามี)
     if (preset && preset.overlay) {
       ctx.globalCompositeOperation = preset.overlayMode || 'screen'
       ctx.globalAlpha = preset.overlayAlpha
@@ -163,7 +155,6 @@ function PhotoboothPage() {
       ctx.globalAlpha = 1.0
     }
 
-    // Reset Transformations
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.filter = 'none'
   }
@@ -176,21 +167,18 @@ function PhotoboothPage() {
         const ctx = cvs.getContext('2d')
         const vid = videoRef.current
 
-        // Sync Canvas size with Display size
         if (cvs.width !== cvs.clientWidth || cvs.height !== cvs.clientHeight) {
           cvs.width = cvs.clientWidth
           cvs.height = cvs.clientHeight
         }
 
-        // วาดภาพเต็มจอ (ใช้ฟังก์ชัน drawCover)
         drawCover(ctx, vid, cvs.width, cvs.height, FILTER_PRESETS[activeFilter], true)
       }
 
-      // ส่วน Preview (แสดงผลรูปที่ถ่ายไปแล้ว)
+      // Preview (Miniature frame view)
       if (composeCanvasRef.current) {
         const cvs = composeCanvasRef.current
         const ctx = cvs.getContext('2d')
-        // Sync size
         if (cvs.width !== cvs.clientWidth || cvs.height !== cvs.clientHeight) {
           cvs.width = cvs.clientWidth
           cvs.height = cvs.clientHeight
@@ -202,16 +190,29 @@ function PhotoboothPage() {
         ctx.fillStyle = '#f0f0f0'
         ctx.fillRect(0, 0, w, h)
 
-        // วาดรูปที่ถ่ายแล้วลงตาม Slot
+        // Draw shots in slots
+        // Note: frameSlots are normalized (nx, ny, nw, nh) by my imageUtils update?
+        // Wait, my imageUtils `detectSlots` returned normalized nx, ny, nw, nh as well as x,y,w,h.
+        // Let's use normalized values for responsiveness.
+
         shotImgs.forEach((img, idx) => {
           const slotIndex = idx % frameSlots.length
           const s = frameSlots[slotIndex]
           if (img && s) {
-            ctx.drawImage(img, s.x * w, s.y * h, s.w * w, s.h * h)
+            // Draw logic for preview (simple stretch for preview is ok, or fit)
+            // But let's verify what `detectSlots` returns.
+            // It returns { x, y, w, h, nx, ny, nw, nh }
+
+            const dx = s.nx * w
+            const dy = s.ny * h
+            const dw = s.nw * w
+            const dh = s.nh * h
+
+            ctx.drawImage(img, dx, dy, dw, dh)
           }
         })
 
-        // วาดเฟรมทับ
+        // Draw frame over
         if (frameImgRef.current && isFrameLoaded) {
           ctx.drawImage(frameImgRef.current, 0, 0, w, h)
         }
@@ -227,6 +228,7 @@ function PhotoboothPage() {
   const startSession = () => {
     playClick()
     setShotImgs([])
+    shotImgsRef.current = [] // Reset Ref
     setCurrentShot(1)
     doCountdown(1, 5)
   }
@@ -238,59 +240,57 @@ function PhotoboothPage() {
       if (countNum <= 0) {
         clearInterval(timer)
         setCountdown(null)
-        performSnap(step)
+        captureShot(step) // Replaces performSnap
       } else {
         setCountdown(countNum)
       }
     }, TICK_RATE)
   }
 
-  const performSnap = async (step) => {
+  const captureShot = async (step) => {
     playSnap()
     setTriggerFlash(true)
     setTimeout(() => setTriggerFlash(false), 200)
 
-    // กลยุทธ์ Hybrid:
-    // 1. ลองยิง DSLR ก่อน (เฉพาะถ้ายังไม่เคยล้มเหลวมาก่อน)
-    // 2. ถ้า Fail -> Fallback มาใช้ Webcam (videoRef)
+    // --- HYBRID STRATEGY ---
+    // 1. Try DSLR Trigger via Backend
+    // 2. If fail/timeout/disabled -> Fallback to Webcam
 
     let dslrSuccess = false
 
-    // เช็คว่าเคย Fail มาก่อนไหม ถ้าเคยแล้ว ให้ข้ามไป Webcam เลยเพื่อความเร็ว
-    // const skipDslr = useRef(false) // Moved to top level
-
-    if (!skipDslr.current) {
+    if (ENABLE_DSLR && !skipDslr.current) {
       try {
-        // ส่ง request ไป trigger DSLR
         const formData = new FormData()
         formData.append('step', step)
-        // Time out สั้นๆ 3 วินาที เผื่อไม่ได้ต่อกล้องจะได้รีบตัดไป Webcam
+        // Timeout 3s to not block too long if camera is off
         const res = await axios.post(`${API_URL}/trigger_dslr`, formData, { timeout: 3000 })
 
         if (res.data.status === 'success') {
           dslrSuccess = true
-          const imgUrl = res.data.image_url
+          const imgUrl = res.data.image_url // URL from backend
 
-          // Preload รูปที่ได้จาก DSLR เพื่อความชัวร์
+          // Load the high-res image
           const img = new Image()
+          img.crossOrigin = "anonymous"
           img.onload = () => {
             setShotImgs(prev => {
               const n = [...prev]
               n[step - 1] = img
+              shotImgsRef.current = n // Update Ref
               return n
             })
             proceedToNext(step)
           }
           img.onerror = () => {
-            // รูปโหลดไม่ได้? แปลกมาก แต่กันเหนียว
             console.error("DSLR Image load failed")
+            // If image fails to load, fallback to webcam just in case
             fallbackWebcam(step)
           }
           img.src = imgUrl
         }
       } catch (e) {
-        console.log("DSLR Trigger Failed or Timeout (Switching to Webcam):", e)
-        skipDslr.current = true // ครั้งหน้าไม่ต้องลองแล้ว
+        console.log("DSLR Trigger Failed/Timeout (Switching to Webcam):", e)
+        skipDslr.current = true // Disable DSLR for rest of session
       }
     }
 
@@ -303,45 +303,28 @@ function PhotoboothPage() {
     if (!videoRef.current) return
     const vid = videoRef.current
 
-    // สร้าง Canvas ชั่วคราวเพื่อ Capture
+    // Capture logic (Webcam)
     const tempCvs = document.createElement('canvas')
     tempCvs.width = 1920
-    tempCvs.height = 1080 // บังคับ 16:9
+    tempCvs.height = 1080
     const ctx = tempCvs.getContext('2d')
-
-    // ใช้ logic เดียวกับ Live View เพื่อให้ภาพที่ได้เหมือนตาเห็นเป๊ะ
     drawCover(ctx, vid, tempCvs.width, tempCvs.height, FILTER_PRESETS[activeFilter], true)
 
-    tempCvs.toBlob(async (blob) => {
-      if (!blob) return
-
-      // โชว์ Preview ทันที
-      const url = URL.createObjectURL(blob)
-      const img = new Image()
-      img.onload = () => {
-        setShotImgs(prev => {
-          const n = [...prev]
-          n[step - 1] = img
-          return n
-        })
-      }
-      img.src = url
-
-      // อัปโหลดไป Server
-      const formData = new FormData()
-      formData.append('step', step)
-      formData.append('file', blob, `shot_${step}.jpg`)
-
-      try { await axios.post(`${API_URL}/capture_step`, formData) }
-      catch (e) { console.error("Upload Failed:", e) }
-
+    const url = tempCvs.toDataURL('image/jpeg', 0.95)
+    const img = new Image()
+    img.onload = () => {
+      setShotImgs(prev => {
+        const n = [...prev]
+        n[step - 1] = img
+        shotImgsRef.current = n // Update Ref
+        return n
+      })
       proceedToNext(step)
-
-    }, 'image/jpeg', 0.95)
+    }
+    img.src = url
   }
 
   const proceedToNext = (step) => {
-    // ไปช็อตต่อไป หรือ จบ
     setTimeout(() => {
       if (step < (frameSlots.length || 4)) {
         setCurrentShot(step + 1)
@@ -356,53 +339,56 @@ function PhotoboothPage() {
     if (!selectedFrame) return
     setIsProcessing(true)
     try {
-      const formData = new FormData()
-      formData.append('frame_id', frameId)
-      const res = await axios.post(`${API_URL}/merge`, formData)
-
-      if (res.data.status === 'success') {
-        playJingle()
-        setFinalPhoto(res.data.image_url)
-        setFinalFilename(res.data.filename)
-      }
+      // Merge locally using REF (current state)
+      // This prevents the 'stale closure' bug where shotImgs was empty
+      const resultDataUrl = await mergeImages(frameUrl, shotImgsRef.current, frameSlots)
+      playJingle()
+      setFinalPhoto(resultDataUrl) // This is a data:image/jpeg;base64,... string
     } catch (e) {
-      alert("Error Merging")
+      console.error("Merge error:", e)
+      alert("Error creating final photo.")
     } finally {
       setIsProcessing(false)
       setCurrentShot(0)
     }
   }
 
-  // ... (Print, Back, Reset, Home Logic เหมือนเดิม) ...
-  const handlePrint = async () => {
+  const handlePrint = () => {
     playClick()
-    if (!finalFilename) return
-    setIsPrinting(true)
-    try {
-      const res = await axios.post(`${API_URL}/print/${finalFilename}`)
-      alert(res.data.status === 'success' ? "กำลังส่งคำสั่งไปที่เครื่องปริ้น... 🖨️" : "Print Error")
-    } catch (e) { alert("Print Error") }
-    finally { setIsPrinting(false) }
+    if (!finalPhoto) return
+
+    // 1. Auto Save Locally (Keep this as requested)
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    downloadImage(finalPhoto, `photobooth-${timestamp}.jpg`)
+
+    // 2. Frontend Print (Browser Dialog)
+    // User can enable "Silent Printing" by launching Chrome/Edge with '--kiosk-printing'
+    printImage(finalPhoto)
   }
 
-  const handleBack = async () => {
+  const handleSave = () => {
+    playClick()
+    if (!finalPhoto) return
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    downloadImage(finalPhoto, `photobooth-${timestamp}.jpg`)
+  }
+
+  const handleBack = () => {
     playBack()
-    try { await axios.delete(`${API_URL}/cleanup`) } catch (e) { }
     navigate('/select-frame')
   }
 
-  const reset = async () => {
+  const reset = () => {
     playClick()
-    await axios.delete(`${API_URL}/cleanup`)
     setFinalPhoto(null)
-    setFinalFilename(null)
     setShotImgs([])
+    shotImgsRef.current = []
     setCurrentShot(0)
+    setIsPrinting(false)
   }
 
-  const goHome = async () => {
+  const goHome = () => {
     playBack()
-    await axios.delete(`${API_URL}/cleanup`)
     navigate('/')
   }
 
@@ -419,13 +405,13 @@ function PhotoboothPage() {
 
       {countdown && <div className="overlay-text countdown">{countdown}</div>}
       {isProcessing && <div className="overlay-text message processing">✓ กำลังประมวลผล...</div>}
-      {isPrinting && <div className="overlay-text message printing">🖨️ ส่งคำสั่งไปปริ้น...</div>}
 
       {finalPhoto ? (
         <div className="result-view">
           <img src={finalPhoto} className="final-img" alt="Result" />
           <div className="btn-group result-buttons">
-            <button onClick={handlePrint} className="btn btn-primary btn-lg">🖨️ สั่งปริ้น</button>
+            <button onClick={handlePrint} className="btn btn-primary btn-lg">🖨️ สั่งปริ้น (+Save)</button>
+            <button onClick={handleSave} className="btn btn-secondary">💾 บันทึกรูป</button>
             <button onClick={reset} className="btn btn-secondary">🔄 ถ่ายใหม่</button>
             <button onClick={goHome} className="btn btn-tertiary">🏠 เสร็จสิ้น</button>
           </div>
